@@ -3,15 +3,15 @@ const Ticket = require('../models/Ticket');
 const { seedGarage } = require('../services/seedService');
 
 /**
- * Get overall garage overview statistics and per-level breakdowns.
+ * Get overall garage overview statistics, per-level breakdowns, and live layout structure.
  */
 exports.getOverview = async (req, res) => {
   try {
     const spots = await ParkingSpot.find({}).sort({ level: 1, spotNumber: 1 });
     
-    // Auto-seed if database is fresh/empty
+    // Auto-seed default 3 levels if database is fresh/empty
     if (spots.length === 0) {
-      await seedGarage();
+      await seedGarage({ levels: 3, compactPerLevel: 4, standardPerLevel: 4, evPerLevel: 2 });
       return exports.getOverview(req, res);
     }
 
@@ -58,6 +58,12 @@ exports.getOverview = async (req, res) => {
     const activeTicketsCount = await Ticket.countDocuments({ status: 'ACTIVE' });
     const totalCompletedTickets = await Ticket.countDocuments({ status: 'COMPLETED' });
 
+    const uniqueLevels = Object.keys(levelsMap).length || 1;
+    const sampleLevel = levelsMap[1] || Object.values(levelsMap)[0] || {};
+    const compactPerLvl = sampleLevel.compact ? sampleLevel.compact.total : Math.round(compactSpots.length / uniqueLevels);
+    const standardPerLvl = sampleLevel.standard ? sampleLevel.standard.total : Math.round(standardSpots.length / uniqueLevels);
+    const evPerLvl = sampleLevel.ev ? sampleLevel.ev.total : Math.round(totalEV / uniqueLevels);
+
     res.json({
       summary: {
         totalSpots,
@@ -82,7 +88,14 @@ exports.getOverview = async (req, res) => {
         activeVehicles: activeTicketsCount,
         completedSessions: totalCompletedTickets
       },
-      levels: Object.values(levelsMap).sort((a, b) => a.level - b.level)
+      levels: Object.values(levelsMap).sort((a, b) => a.level - b.level),
+      currentLayout: {
+        levels: uniqueLevels,
+        compactPerLevel: compactPerLvl,
+        standardPerLevel: standardPerLvl,
+        evPerLevel: evPerLvl,
+        totalSpots
+      }
     });
   } catch (error) {
     res.status(500).json({ error: error.message });

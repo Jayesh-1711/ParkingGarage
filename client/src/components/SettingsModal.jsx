@@ -33,7 +33,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
 
   const [messyText, setMessyText] = useState(sampleMessyText);
 
-  // Garage layout state
+  // Garage layout state (dynamically fetched from live garage overview)
   const [layout, setLayout] = useState({
     levels: 3,
     compactPerLevel: 4,
@@ -48,21 +48,37 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
 
   useEffect(() => {
     if (isOpen) {
-      loadPricing();
+      loadSettingsData();
     }
   }, [isOpen]);
 
-  const loadPricing = async () => {
+  const loadSettingsData = async () => {
     try {
-      const data = await api.getPricing();
-      setPricing({
-        firstHourRate: data.firstHourRate,
-        additionalHourRate: data.additionalHourRate,
-        dailyCap: data.dailyCap,
-        ratesBySpotType: data.ratesBySpotType
-      });
+      const [pricingData, overviewData] = await Promise.all([
+        api.getPricing(),
+        api.getOverview()
+      ]);
+
+      if (pricingData) {
+        setPricing({
+          firstHourRate: pricingData.firstHourRate ?? 10,
+          additionalHourRate: pricingData.additionalHourRate ?? 5,
+          dailyCap: pricingData.dailyCap ?? 40,
+          ratesBySpotType: pricingData.ratesBySpotType
+        });
+      }
+
+      if (overviewData?.currentLayout) {
+        setLayout({
+          levels: overviewData.currentLayout.levels || 3,
+          compactPerLevel: overviewData.currentLayout.compactPerLevel || 4,
+          standardPerLevel: overviewData.currentLayout.standardPerLevel || 4,
+          evPerLevel: overviewData.currentLayout.evPerLevel || 2,
+          resetTickets: false
+        });
+      }
     } catch (err) {
-      console.error('Failed to load pricing:', err);
+      console.error('Failed to load settings data:', err);
     }
   };
 
@@ -92,7 +108,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
     try {
       const res = await api.importMessyRates(messyText);
       setMsg('Messy rate card parsed and applied to all spot types!');
-      loadPricing();
+      loadSettingsData();
       if (onUpdated) onUpdated();
     } catch (err) {
       setError(err.message);
@@ -158,7 +174,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
             style={{ flex: 1, padding: '7px 10px', fontSize: '0.82rem' }}
             onClick={() => { setActiveTab('layout'); setMsg(null); setError(null); }}
           >
-            <Layers size={14} /> Layout
+            <Layers size={14} /> Layout ({layout.levels} Levels)
           </button>
         </div>
 
@@ -362,7 +378,7 @@ export default function SettingsModal({ isOpen, onClose, onUpdated }) {
               fontSize: '0.8rem',
               color: 'var(--text-muted)'
             }}>
-              Total capacity will be{' '}
+              Current active configuration:{' '}
               <strong style={{ color: 'var(--text-main)' }}>
                 {layout.levels * (layout.compactPerLevel + layout.standardPerLevel + layout.evPerLevel)} spots
               </strong>{' '}
